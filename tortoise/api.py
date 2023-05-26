@@ -224,6 +224,9 @@ class TextToSpeech:
             self.autoregressive = torch.jit.load(f'{models_dir}/autoregressive.ptt')
             self.diffusion = torch.jit.load(f'{models_dir}/diffusion_decoder.ptt')
         else:
+
+            # try to compile
+
             self.autoregressive = UnifiedVoice(max_mel_tokens=604, max_text_tokens=402, max_conditioning_inputs=2, layers=30,
                                           model_dim=1024,
                                           heads=16, number_text_tokens=255, start_text_token=255, checkpointing=False,
@@ -460,12 +463,23 @@ class TextToSpeech:
             # The diffusion model actually wants the last hidden layer from the autoregressive model as conditioning
             # inputs. Re-produce those for the top results. This could be made more efficient by storing all of these
             # results, but will increase memory usage.
-            self.autoregressive = self.autoregressive.to(self.device)
+            # self.autoregressive = self.autoregressive.to(self.device)
+
+            auto_conditioning = auto_conditioning.to(device="cpu")
+            text_tokens = text_tokens.to(device='cpu')
+            best_results = best_results.to(device='cpu')
+
+
             best_latents = self.autoregressive(auto_conditioning.repeat(k, 1), text_tokens.repeat(k, 1),
                                                torch.tensor([text_tokens.shape[-1]], device=text_tokens.device), best_results,
                                                torch.tensor([best_results.shape[-1]*self.autoregressive.mel_length_compression], device=text_tokens.device),
                                                return_latent=True, clip_inputs=False)
             self.autoregressive = self.autoregressive.cpu()
+        
+            auto_conditioning.to(device=self.device)
+            text_tokens.to(device=self.device)
+            best_results.to(device=self.device)
+            best_latents = best_latents.to(self.device)
             del auto_conditioning
 
             if verbose:
